@@ -34,6 +34,7 @@ Pour le moment cet addon fonctionne en lien avec google sheet
 - Ajouter une première ligne contenant les entêtes de colonnes : ID, FULLNAME, PROJECT, DAY, TIME
 - Remplir les lignes suivantes avec les champs FULLNAME: le nom de l'étudiant tel qu'il apparait dans la liste des étudiants qui vous sont attribués, DAY: le jour de la semaine (LUNDI à DIMANCHE) et TIME: l'heure au format france de votre session (sera convertie au format UTC pour la réservation)
 - Version finale
+
 | ID | FULLNAME        | PROJECT | DAY   | TIME  |
 | -- | --------------- | ------- | ----- | ----- |
 |    | Stéphane Torchy |         | LUNDI | 09:00 |
