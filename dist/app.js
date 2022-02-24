@@ -1340,35 +1340,45 @@
   };
   src_default.locale(locale, null, true);
 
-  // src/vendor/mitt/mitt.js
+  // src/vendor/mitt/mitt.neutral.js
   function mitt(all) {
     all = all || new Map();
     return {
       all,
       on(type, handler) {
         const handlers = all.get(type);
-        const added = handlers && handlers.push(handler);
-        if (!added) {
+        if (handlers) {
+          handlers.push(handler);
+        } else {
           all.set(type, [handler]);
         }
       },
       off(type, handler) {
         const handlers = all.get(type);
         if (handlers) {
-          handlers.splice(handlers.indexOf(handler) >>> 0, 1);
+          if (handler) {
+            handlers.splice(handlers.indexOf(handler) >>> 0, 1);
+          } else {
+            all.set(type, []);
+          }
         }
       },
       emit(type, evt) {
-        (all.get(type) || []).slice().map((handler) => {
-          handler(evt);
-        });
-        (all.get("*") || []).slice().map((handler) => {
-          handler(type, evt);
-        });
+        let handlers = all.get(type);
+        if (handlers) {
+          handlers.slice().map((handler) => {
+            handler(evt);
+          });
+        }
+        handlers = all.get("*");
+        if (handlers) {
+          handlers.slice().map((handler) => {
+            handler(type, evt);
+          });
+        }
       }
     };
   }
-  var mitt_default = mitt;
 
   // src/vendor/sheetrock/sheetrock.neutral.tampermonkey.js
   var __create2 = Object.create;
@@ -6499,9 +6509,10 @@
           dayNames[0].classList.add("weekend");
           dayNames[6].classList.add("weekend");
         }
-        let firstEntry = now.subtract(++firstDay, "days");
+        let iToday = src_default().weekday();
+        let firstEntry = now.subtract(++iToday, "days");
         let days = datepicker.querySelectorAll(".jsPanel-cal-sub.day");
-        let value = firstEntry.add(0, "days");
+        let value = firstEntry;
         for (let day of days) {
           day.classList.remove("today", "notInMonth", "selected", "range", "remove-border-radius-right", "remove-border-radius-left");
           value = value.add(1, "days");
@@ -6717,6 +6728,36 @@
       jsPanel.datepicker.keyValue = void 0;
     });
   }
+
+  // src/vendor/jsPanel4/es6module/extensions/modal/jspanel.modal.min.js
+  jsPanel.modal || (jsPanel.modal = { version: "1.2.5", date: "2020-04-26 23:23", defaults: { closeOnEscape: true, closeOnBackdrop: true, dragit: false, headerControls: "closeonly", resizeit: false, syncMargins: false }, addBackdrop(e) {
+    let a = document.getElementsByClassName("jsPanel-modal-backdrop").length, n = document.createElement("div");
+    return n.id = "jsPanel-modal-backdrop-" + e, a === 0 ? n.className = "jsPanel-modal-backdrop" : a > 0 && (n.className = "jsPanel-modal-backdrop jsPanel-modal-backdrop-multi"), n.style.zIndex = this.ziModal.next(), n;
+  }, removeBackdrop(e) {
+    let a = document.getElementById(`jsPanel-modal-backdrop-${e}`);
+    a.classList.add("jsPanel-modal-backdrop-out");
+    let n = 1e3 * parseFloat(getComputedStyle(a).animationDuration);
+    window.setTimeout(function() {
+      document.body.removeChild(a);
+    }, n);
+  }, create(e = {}) {
+    e.paneltype = "modal", e.id ? typeof e.id == "function" && (e.id = e.id()) : e.id = `jsPanel-${jsPanel.idCounter += 1}`;
+    let a = e, n = this.addBackdrop(a.id);
+    return e.config && delete (a = Object.assign({}, e.config, e)).config, a = Object.assign({}, this.defaults, a, { container: "window" }), document.body.append(n), jsPanel.create(a, (e2) => {
+      e2.style.zIndex = jsPanel.modal.ziModal.next(), e2.header.style.cursor = "default", e2.footer.style.cursor = "default", a.closeOnBackdrop && jsPanel.pointerup.forEach(function(n2) {
+        document.getElementById(`jsPanel-modal-backdrop-${a.id}`).addEventListener(n2, function() {
+          e2.close(null, true);
+        });
+      }), e2.options.onclosed.unshift(function() {
+        return jsPanel.modal.removeBackdrop(a.id), true;
+      });
+    });
+  } }, jsPanel.modal.ziModal = (() => {
+    let e = jsPanel.ziBase + 1e4;
+    return { next: function() {
+      return e++;
+    } };
+  })());
 
   // src/vendor/object-dom/src/base.ts
   var ObjectDom = class {
@@ -6999,18 +7040,219 @@
     target.appendChild(node);
   }
 
+  // src/ui.js
+  var import_localeData2 = __toModule(require_localeData());
+  var import_customParseFormat = __toModule(require_customParseFormat());
+  var import_utc = __toModule(require_utc());
+
+  // src/vendor_lib/vanillajs-datepicker/listener-register.js
+  var listenerRegistries = new WeakMap();
+  function parseType(type, name) {
+    const sep = type.indexOf(".");
+    return sep < 0 ? [type, typeof name === "string" ? name : void 0] : [type.slice(0, sep), type.slice(sep + 1)];
+  }
+  function getCaptureVal(opts) {
+    return !!(typeof opts === "object" ? opts.capture : opts);
+  }
+  function examineListener(listener, criteria = {}) {
+    if (criteria.name && criteria.name !== listener.name) {
+      return false;
+    }
+    if (criteria.type && criteria.type !== listener.type) {
+      return false;
+    }
+    if (criteria.fn && criteria.fn !== listener.fn) {
+      return false;
+    }
+    if (criteria.capture !== void 0 && criteria.capture !== getCaptureVal(listener.options)) {
+      return false;
+    }
+    return true;
+  }
+  function register(listeners, target, typeString, rawParams) {
+    const params = typeof rawParams[1] === "string" && rawParams[2] === void 0 ? [rawParams[0], void 0, rawParams[1]] : rawParams;
+    const [type, name] = parseType(typeString, params[2]);
+    const [fn, options] = params;
+    target.addEventListener(type, fn, options);
+    return [...listeners, { type, fn, options, name }];
+  }
+  function unregister(listeners, target, typeString, params = void 0) {
+    let criteria;
+    if (params) {
+      const [type, name] = parseType(typeString, params[0]);
+      const fn = typeof params[0] === "function" ? params[0] : void 0;
+      const capture = fn && !name ? getCaptureVal(params[1]) : void 0;
+      criteria = { name, type, fn, capture };
+    }
+    return listeners.reduce((result, listener) => {
+      if (!criteria || examineListener(listener, criteria)) {
+        target.removeEventListener(listener.type, listener.fn, listener.options);
+      } else {
+        result.push(listener);
+      }
+      return result;
+    }, []);
+  }
+  function performAdd(listeners, target, entry) {
+    const types = entry[0].split(" ");
+    const params = entry.slice(1);
+    return types.length > 1 ? types.reduce((result, typeStr) => register(result, target, typeStr, params), listeners) : register(listeners, target, types[0], params);
+  }
+  function performRemove(listeners, target, entry) {
+    const params = entry.slice(1);
+    return entry[0].split(" ").reduce((result, typeStr) => unregister(result, target, typeStr, params), listeners);
+  }
+  function addListener(target, type, listener, options = void 0, name = void 0) {
+    let listeners = listenerRegistries.get(target) || [];
+    if (typeof type === "string") {
+      listeners = performAdd(listeners, target, [type, listener, options, name]);
+    } else if (Array.isArray(type)) {
+      listeners = type.reduce((result, entry) => performAdd(result, target, entry), listeners);
+    } else {
+      listeners = Object.entries(type).reduce((result, entry) => performAdd(result, target, entry), listeners);
+    }
+    listenerRegistries.set(target, listeners);
+  }
+  function removeListener(target, type = void 0, listener = void 0, options = void 0) {
+    let listeners = listenerRegistries.get(target);
+    if (!listeners) {
+      return;
+    }
+    if (type === void 0) {
+      listeners = unregister(listeners, target);
+    } else if (typeof type === "string") {
+      listeners = performRemove(listeners, target, [type, listener, options]);
+    } else if (Array.isArray(type)) {
+      listeners = type.reduce((result, entry) => {
+        return performRemove(result, target, Array.isArray(entry) ? entry : [entry]);
+      }, listeners);
+    } else {
+      listeners = Object.entries(type).reduce((result, entry) => performRemove(result, target, entry), listeners);
+    }
+    listenerRegistries.set(target, listeners);
+  }
+  function getListeners(target, criteria = {}) {
+    const listeners = listenerRegistries.get(target);
+    if (!listeners) {
+      return [];
+    }
+    return listeners.filter((listener) => examineListener(listener, criteria));
+  }
+
   // src/json/jspanel.css.txt
   var jspanel_css_default = '/**\n * jsPanel - A JavaScript library to create highly configurable multifunctional floating panels that can also be used as modal, tooltip, hint or contextmenu\n * @version v4.13.0\n * @homepage https://jspanel.de/\n * @license MIT\n * @author Stefan Str\xE4\xDFer - info@jspanel.de\n * @github https://github.com/Flyer53/jsPanel4.git\n */\n.default-bg, .secondary-bg {\n  background-color: #b0bec5; }\n\n.primary-bg {\n  background-color: #01579b; }\n\n.info-bg {\n  background-color: #039be5; }\n\n.success-bg {\n  background-color: #2e7d32; }\n\n.warning-bg {\n  background-color: #f57f17; }\n\n.danger-bg {\n  background-color: #dd2c00; }\n\n.light-bg {\n  background-color: #e0e0e0; }\n\n.dark-bg {\n  background-color: #263238; }\n\n.jsPanel {\n  border: 0;\n  box-sizing: border-box;\n  vertical-align: baseline;\n  font-family: Roboto,"Open Sans",Lato,"Helvetica Neue",Arial,sans-serif;\n  font-weight: normal;\n  display: flex;\n  flex-direction: column;\n  opacity: 0;\n  overflow: visible;\n  position: absolute;\n  /* top: 0  do not remove, otherwise panel is at the very bottom of the page -> results in vertical scrollbars -> positioning at right incorrect */\n  z-index: 100; }\n  .jsPanel .jsPanel-hdr {\n    border: 0;\n    box-sizing: border-box;\n    vertical-align: baseline;\n    font-family: Roboto,"Open Sans",Lato,"Helvetica Neue",Arial,sans-serif;\n    font-weight: normal;\n    display: flex;\n    flex-direction: column;\n    flex-shrink: 0;\n    line-height: normal; }\n  .jsPanel .jsPanel-content {\n    border: 0;\n    box-sizing: border-box;\n    vertical-align: baseline;\n    font-family: Roboto,"Open Sans",Lato,"Helvetica Neue",Arial,sans-serif;\n    font-weight: normal;\n    background: #ffffff;\n    color: #000000;\n    font-size: 1rem;\n    position: relative;\n    overflow-x: hidden;\n    overflow-y: auto;\n    flex-grow: 1; }\n    .jsPanel .jsPanel-content pre {\n      color: inherit; }\n  .jsPanel .jsPanel-ftr {\n    flex-direction: row;\n    justify-content: flex-end;\n    flex-wrap: nowrap;\n    align-items: center;\n    display: none;\n    box-sizing: border-box;\n    font-size: 1rem;\n    height: auto;\n    background: #f5f5f5;\n    font-weight: normal;\n    color: black;\n    overflow: hidden; }\n  .jsPanel .jsPanel-ftr.active {\n    display: flex;\n    flex-shrink: 0;\n    margin: 0;\n    padding: 3px 8px; }\n\n.jsPanel-hdr.jsPanel-hdr-dark .jsPanel-btn:hover {\n  background-color: rgba(255, 255, 255, 0.4); }\n\n.jsPanel-hdr.jsPanel-hdr-light .jsPanel-btn:hover {\n  background-color: rgba(0, 0, 0, 0.15); }\n\n.jsPanel-hdr-toolbar {\n  font-size: 1rem; }\n\n.jsPanel-headerbar {\n  box-sizing: border-box;\n  display: flex;\n  flex-direction: row;\n  flex-wrap: nowrap;\n  align-items: center; }\n  .jsPanel-headerbar img {\n    vertical-align: middle;\n    max-height: 38px; }\n\n.jsPanel-titlebar {\n  display: flex;\n  align-items: center;\n  font-size: 1rem;\n  flex: 1 1 0;\n  cursor: move;\n  height: 100%;\n  overflow: hidden;\n  user-select: none; }\n  .jsPanel-titlebar .jsPanel-title {\n    white-space: nowrap;\n    overflow: hidden;\n    text-overflow: ellipsis;\n    font-variant: small-caps;\n    font-weight: normal;\n    margin: 0 5px 0 8px;\n    min-width: 0; }\n\n.jsPanel-titlebar.jsPanel-rtl {\n  flex-direction: row-reverse; }\n\n.jsPanel-controlbar {\n  display: flex;\n  align-items: center;\n  align-self: start;\n  touch-action: none;\n  margin: 3px; }\n  .jsPanel-controlbar .jsPanel-btn {\n    cursor: pointer;\n    touch-action: none;\n    border-radius: 3px;\n    border: 0;\n    padding: 0;\n    margin: 0;\n    background-color: transparent;\n    box-shadow: none; }\n    .jsPanel-controlbar .jsPanel-btn svg.jsPanel-icon, .jsPanel-controlbar .jsPanel-btn span, .jsPanel-controlbar .jsPanel-btn i {\n      vertical-align: middle; }\n    .jsPanel-controlbar .jsPanel-btn span.glyphicon {\n      padding: 0 2px; }\n    .jsPanel-controlbar .jsPanel-btn svg.svg-inline--fa {\n      margin: 2px 3px; }\n  .jsPanel-controlbar .jsPanel-btn-normalize {\n    display: none; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-xl svg:not(.svg-inline--fa), .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-xl span:not(.material-icons) {\n    width: 2rem;\n    height: 2rem;\n    margin: 2px 3px; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-xl .svg-inline--fa {\n    font-size: 2rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-xl span.material-icons {\n    font-size: 2.2rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-xl span[class^=fa] {\n    width: auto;\n    height: auto;\n    font-size: 2rem;\n    margin: 0 4px; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-lg svg:not(.svg-inline--fa), .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-lg span:not(.material-icons) {\n    width: 1.75rem;\n    height: 1.75rem;\n    margin: 2px 3px; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-lg .svg-inline--fa {\n    font-size: 1.75rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-lg span.material-icons {\n    font-size: 1.9rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-lg span[class^=fa] {\n    width: auto;\n    height: auto;\n    font-size: 1.75rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-md svg:not(.svg-inline--fa), .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-md span:not(.material-icons) {\n    width: 1.5rem;\n    height: 1.5rem;\n    margin: 2px 3px; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-md .svg-inline--fa {\n    font-size: 1.5rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-md span.material-icons {\n    font-size: 1.6rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-md span[class^=fa] {\n    width: auto;\n    height: auto;\n    font-size: 1.5rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-sm svg:not(.svg-inline--fa), .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-sm span:not(.material-icons) {\n    width: 1.25rem;\n    height: 1.25rem;\n    margin: 2px 3px; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-sm .svg-inline--fa {\n    font-size: 1.25rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-sm span.material-icons {\n    font-size: 1.3rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-sm span[class^=fa] {\n    width: auto;\n    height: auto;\n    font-size: 1.25rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-xs svg:not(.svg-inline--fa), .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-xs span:not(.material-icons) {\n    width: 1rem;\n    height: 1rem;\n    margin: 1px 3px; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-xs .svg-inline--fa {\n    font-size: 1rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-xs span.material-icons {\n    font-size: 1rem; }\n  .jsPanel-controlbar .jsPanel-btn.jsPanel-btn-xs span[class^=fa] {\n    width: auto;\n    height: auto;\n    font-size: 1rem; }\n\n.jsPanel-hdr-toolbar {\n  display: none;\n  width: auto;\n  height: auto; }\n\n.jsPanel-hdr-toolbar.active {\n  box-sizing: border-box;\n  display: flex;\n  flex-direction: row;\n  flex-wrap: nowrap;\n  align-items: center;\n  padding: 3px 8px; }\n\n/* styles for panels using option.rtl */\n.jsPanel-titlebar .jsPanel-title[dir=rtl] {\n  margin: 0 8px 0 5px; }\n\n.jsPanel-hdr-toolbar[dir=rtl].active {\n  padding: 0 8px 0 8px; }\n\n.jsPanel-content[dir=rtl] {\n  text-align: right; }\n\n.jsPanel-ftr[dir=rtl] {\n  flex-direction: row; }\n\n/* container that takes the minified jsPanels */\n#jsPanel-replacement-container, .jsPanel-minimized-box, .jsPanel-minimized-container {\n  display: flex;\n  flex-flow: row wrap-reverse;\n  background: transparent none repeat scroll 0 0;\n  bottom: 0;\n  height: auto;\n  left: 0;\n  position: fixed;\n  width: auto;\n  z-index: 9998; }\n\n.jsPanel-replacement {\n  font-family: Roboto,"Open Sans",Lato,"Helvetica Neue",Arial,sans-serif;\n  display: flex;\n  align-items: center;\n  width: 200px;\n  height: 34px;\n  margin: 1px 1px 0 0;\n  z-index: 9999; }\n  .jsPanel-replacement .jsPanel-hdr {\n    flex-grow: 1;\n    min-width: 0;\n    padding: 0;\n    height: 34px;\n    overflow: hidden; }\n    .jsPanel-replacement .jsPanel-hdr .jsPanel-headerlogo {\n      max-width: 50%;\n      overflow: hidden; }\n      .jsPanel-replacement .jsPanel-hdr .jsPanel-headerlogo img {\n        max-width: 100px;\n        max-height: 34px; }\n  .jsPanel-replacement .jsPanel-titlebar {\n    cursor: default;\n    min-width: 0; }\n  .jsPanel-replacement .jsPanel-btn.jsPanel-btn-normalize {\n    display: block; }\n\n.jsPanel-minimized-box, .jsPanel-minimized-container {\n  position: absolute;\n  width: 100%;\n  overflow: hidden; }\n\n/* helper classes to make .jsPanel-content a flex box */\n.flexOne {\n  display: flex;\n  flex-flow: row wrap; }\n\n/* css for resizeit handles -------------- */\n.jsPanel-resizeit-handle {\n  display: block;\n  font-size: 0.1px;\n  position: absolute;\n  touch-action: none; }\n\n.jsPanel-resizeit-handle.jsPanel-resizeit-n {\n  cursor: n-resize;\n  height: 12px;\n  left: 9px;\n  top: -5px;\n  width: calc(100% - 18px); }\n\n.jsPanel-resizeit-handle.jsPanel-resizeit-e {\n  cursor: e-resize;\n  height: calc(100% - 18px);\n  right: -9px;\n  top: 9px;\n  width: 12px; }\n\n.jsPanel-resizeit-handle.jsPanel-resizeit-s {\n  bottom: -9px;\n  cursor: s-resize;\n  height: 12px;\n  left: 9px;\n  width: calc(100% - 18px); }\n\n.jsPanel-resizeit-handle.jsPanel-resizeit-w {\n  cursor: w-resize;\n  height: calc(100% - 18px);\n  left: -9px;\n  top: 9px;\n  width: 12px; }\n\n.jsPanel-resizeit-handle.jsPanel-resizeit-ne {\n  cursor: ne-resize;\n  height: 18px;\n  right: -9px;\n  top: -9px;\n  width: 18px; }\n\n.jsPanel-resizeit-handle.jsPanel-resizeit-se {\n  bottom: -9px;\n  cursor: se-resize;\n  height: 18px;\n  right: -9px;\n  width: 18px; }\n\n.jsPanel-resizeit-handle.jsPanel-resizeit-sw {\n  bottom: -9px;\n  cursor: sw-resize;\n  height: 18px;\n  left: -9px;\n  width: 18px; }\n\n.jsPanel-resizeit-handle.jsPanel-resizeit-nw {\n  cursor: nw-resize;\n  height: 18px;\n  left: -9px;\n  top: -9px;\n  width: 18px; }\n\n.jsPanel-drag-overlay {\n  width: 100%;\n  height: 100%;\n  position: absolute;\n  left: 0;\n  top: 0; }\n\n/* Error panel ----------------- */\n.jsPanel-error .jsPanel-content {\n  border: 0 !important;\n  padding-top: 0 !important;\n  font-size: .9rem;\n  text-align: center; }\n  .jsPanel-error .jsPanel-content p {\n    margin: 0 0 10px 0; }\n  .jsPanel-error .jsPanel-content mark {\n    background: lavender;\n    border-radius: .33rem;\n    padding: 0 8px;\n    font-family: monospace; }\n  .jsPanel-error .jsPanel-content .jsPanel-error-content-separator {\n    width: 100%;\n    height: 1px;\n    background-image: linear-gradient(90deg, white 0%, rebeccapurple 50%, white 100%);\n    margin-bottom: 10px; }\n\n/* box-shadows -------------------------------------------------------- */\n.jsPanel-depth-1 {\n  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23); }\n\n.jsPanel-depth-2 {\n  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.19), 0 6px 6px rgba(0, 0, 0, 0.23); }\n\n.jsPanel-depth-3 {\n  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.25), 0 10px 10px rgba(0, 0, 0, 0.22); }\n\n.jsPanel-depth-4 {\n  box-shadow: 0 19px 38px rgba(0, 0, 0, 0.3), 0 15px 12px rgba(0, 0, 0, 0.22); }\n\n.jsPanel-depth-5 {\n  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3), 0 20px 14px rgba(0, 0, 0, 0.22); }\n\n/* snap sensitive areas ------------------------------------------------ */\n.jsPanel-snap-area {\n  position: fixed;\n  background: black;\n  opacity: .2;\n  border: 1px solid silver;\n  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.5), 0 10px 10px rgba(0, 0, 0, 0.5);\n  z-index: 9999; }\n\n.jsPanel-snap-area-lt, .jsPanel-snap-area-lc, .jsPanel-snap-area-lb, .jsPanel-snap-area-left-top, .jsPanel-snap-area-left-center, .jsPanel-snap-area-left-bottom {\n  left: 0; }\n\n.jsPanel-snap-area-ct, .jsPanel-snap-area-cb {\n  left: 37.5%; }\n\n.jsPanel-snap-area-rt, .jsPanel-snap-area-rc, .jsPanel-snap-area-rb, .jsPanel-snap-area-right-top, .jsPanel-snap-area-right-center, .jsPanel-snap-area-right-bottom {\n  right: 0; }\n\n.jsPanel-snap-area-lt, .jsPanel-snap-area-ct, .jsPanel-snap-area-rt, .jsPanel-snap-area-left-top, .jsPanel-snap-area-center-top, .jsPanel-snap-area-right-top {\n  top: 0; }\n\n.jsPanel-snap-area-lc, .jsPanel-snap-area-rc {\n  top: 37.5%; }\n\n.jsPanel-snap-area-lb, .jsPanel-snap-area-cb, .jsPanel-snap-area-rb, .jsPanel-snap-area-left-bottom, .jsPanel-snap-area-center-bottom, .jsPanel-snap-area-right-bottom {\n  bottom: 0; }\n\n.jsPanel-snap-area-ct, .jsPanel-snap-area-cb {\n  width: 25%; }\n\n.jsPanel-snap-area-lc, .jsPanel-snap-area-rc {\n  height: 25%; }\n\n.jsPanel-snap-area-lt, .jsPanel-snap-area-left-top {\n  border-bottom-right-radius: 100%; }\n\n.jsPanel-snap-area-rt, .jsPanel-snap-area-right-top {\n  border-bottom-left-radius: 100%; }\n\n.jsPanel-snap-area-rb, .jsPanel-snap-area-right-bottom {\n  border-top-left-radius: 100%; }\n\n.jsPanel-snap-area-lb, .jsPanel-snap-area-left-bottom {\n  border-top-right-radius: 100%; }\n\n/* tooltip and tooltip connectors */\n.jsPanel-connector-left-top-corner,\n.jsPanel-connector-right-top-corner,\n.jsPanel-connector-left-bottom-corner,\n.jsPanel-connector-right-bottom-corner {\n  width: 12px;\n  height: 12px;\n  position: absolute;\n  border-radius: 50%; }\n\n.jsPanel-connector-left-top-corner {\n  left: calc(100% - 6px);\n  top: calc(100% - 6px); }\n\n.jsPanel-connector-right-top-corner {\n  left: -6px;\n  top: calc(100% - 6px); }\n\n.jsPanel-connector-right-bottom-corner {\n  left: -6px;\n  top: -6px; }\n\n.jsPanel-connector-left-bottom-corner {\n  left: calc(100% - 6px);\n  top: -6px; }\n\n.jsPanel-connector-top,\n.jsPanel-connector-topleft,\n.jsPanel-connector-topright,\n.jsPanel-connector-bottom,\n.jsPanel-connector-bottomleft,\n.jsPanel-connector-bottomright,\n.jsPanel-connector-left,\n.jsPanel-connector-lefttop,\n.jsPanel-connector-leftbottom,\n.jsPanel-connector-right,\n.jsPanel-connector-righttop,\n.jsPanel-connector-rightbottom {\n  width: 0;\n  height: 0;\n  position: absolute;\n  border: 12px solid transparent; }\n\n.jsPanel-connector-top,\n.jsPanel-connector-topleft,\n.jsPanel-connector-topright {\n  top: 100%;\n  border-bottom-width: 0; }\n\n.jsPanel-connector-top {\n  left: calc(50% - 12px); }\n\n.jsPanel-connector-topleft {\n  left: 0px; }\n\n.jsPanel-connector-topright {\n  left: calc(100% - 24px); }\n\n.jsPanel-connector-bottom,\n.jsPanel-connector-bottomleft,\n.jsPanel-connector-bottomright {\n  top: -12px;\n  border-top-width: 0; }\n\n.jsPanel-connector-bottom {\n  left: calc(50% - 12px); }\n\n.jsPanel-connector-bottomleft {\n  left: 0px; }\n\n.jsPanel-connector-bottomright {\n  left: calc(100% - 24px); }\n\n.jsPanel-connector-left,\n.jsPanel-connector-lefttop,\n.jsPanel-connector-leftbottom {\n  left: 100%;\n  border-right-width: 0; }\n\n.jsPanel-connector-left {\n  top: calc(50% - 12px); }\n\n.jsPanel-connector-lefttop {\n  top: 0px; }\n\n.jsPanel-connector-leftbottom {\n  top: calc(100% - 24px); }\n\n.jsPanel-connector-right,\n.jsPanel-connector-righttop,\n.jsPanel-connector-rightbottom {\n  left: -12px;\n  border-left-width: 0; }\n\n.jsPanel-connector-right {\n  top: calc(50% - 12px); }\n\n.jsPanel-connector-righttop {\n  top: 0px; }\n\n.jsPanel-connector-rightbottom {\n  top: calc(100% - 24px); }\n\n/* IE11 CSS styles go here */\n@media all and (-ms-high-contrast: none), (-ms-high-contrast: active) {\n  .jsPanel-replacement .jsPanel-titlebar {\n    max-width: 105px; } }\n\n/* XXXXXXXXXXXXXXXXXXXXXXX */\n/* css3 animations */\n@keyframes jsPanelFadeIn {\n  from {\n    opacity: 0; }\n  to {\n    opacity: 1; } }\n\n.jsPanelFadeIn {\n  opacity: 0;\n  animation: jsPanelFadeIn ease-in 1;\n  animation-fill-mode: forwards;\n  animation-duration: 600ms; }\n\n@keyframes jsPanelFadeOut {\n  from {\n    opacity: 1; }\n  to {\n    opacity: 0; } }\n\n.jsPanelFadeOut {\n  animation: jsPanelFadeOut ease-in 1;\n  animation-fill-mode: forwards;\n  animation-duration: 600ms; }\n\n@keyframes modalBackdropFadeIn {\n  from {\n    opacity: 0; }\n  to {\n    opacity: 0.65; } }\n\n.jsPanel-modal-backdrop {\n  animation: modalBackdropFadeIn ease-in 1;\n  animation-fill-mode: forwards;\n  animation-duration: 750ms;\n  background: black;\n  position: fixed;\n  top: 0;\n  left: 0;\n  width: 100%;\n  height: 100%; }\n\n@keyframes modalBackdropFadeOut {\n  from {\n    opacity: 0.65; }\n  to {\n    opacity: 0; } }\n\n.jsPanel-modal-backdrop-out {\n  animation: modalBackdropFadeOut ease-in 1;\n  animation-fill-mode: forwards;\n  animation-duration: 400ms; }\n\n.jsPanel-modal-backdrop-multi {\n  background: rgba(0, 0, 0, 0.15); }\n\n.jsPanel-content .jsPanel-iframe-overlay {\n  position: absolute;\n  top: 0;\n  width: 100%;\n  height: 100%;\n  background: transparent; }\n\n.jsPanel-addCloseCtrl {\n  position: absolute;\n  top: 0;\n  right: 0;\n  width: .8rem;\n  height: .8rem;\n  margin: 2px;\n  cursor: pointer;\n  line-height: .8rem;\n  padding: 0;\n  z-index: 100;\n  border: 0;\n  background-color: transparent; }\n\n.jsPanel-addCloseCtrl.rtl {\n  right: unset;\n  left: 0; }\n\n.jsPanel-progressbar {\n  position: relative;\n  width: 100%;\n  height: 0;\n  overflow: hidden; }\n  .jsPanel-progressbar .jsPanel-progressbar-slider {\n    position: absolute;\n    width: 0;\n    height: 3px;\n    background: lightgray;\n    right: 0; }\n\n.jsPanel-progressbar.active {\n  height: 3px; }\n\n@keyframes progressbar {\n  from {\n    width: 0; }\n  to {\n    width: 100%; } }\n\n.jsPanel-content.jsPanel-content-noheader {\n  border: none !important; }\n\nbody {\n  -ms-overflow-style: scrollbar; }\n';
 
   // src/json/datepicker_theme_default.css.txt
   var datepicker_theme_default_css_default = '/**\n * jsPanel - A JavaScript library to create highly configurable multifunctional floating panels that can also be used as modal, tooltip, hint or contextmenu\n * @version v4.13.0\n * @homepage https://jspanel.de/\n * @license MIT\n * @author Stefan Str\xE4\xDFer - info@jspanel.de\n * @github https://github.com/Flyer53/jsPanel4.git\n */\n.jsPanel-cal-wrapper {\n  display: grid;\n  grid-template-areas: "clear back month month month month forward reset" "blank3 day-name-0 day-name-1 day-name-2 day-name-3 day-name-4 day-name-5 day-name-6" "week-0 day-1 day-2 day-3 day-4 day-5 day-6 day-7" "week-1 day-8 day-9 day-10 day-11 day-12 day-13 day-14" "week-2 day-15 day-16 day-17 day-18 day-19 day-20 day-21" "week-3 day-22 day-23 day-24 day-25 day-26 day-27 day-28" "week-4 day-29 day-30 day-31 day-32 day-33 day-34 day-35" "week-5 day-36 day-37 day-38 day-39 day-40 day-41 day-42";\n  grid-template-rows: 1.33fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr;\n  grid-template-columns: .5fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr;\n  grid-row-gap: .2rem;\n  width: 100%;\n  height: 100%;\n  font-size: .875rem;\n  padding: 0 10px 10px; }\n\n.jsPanel-cal-sub {\n  display: flex;\n  align-items: center;\n  justify-content: center; }\n\n.jsPanel-cal-sub.day {\n  cursor: pointer; }\n\n.jsPanel-cal-sub.day.today {\n  background-color: #f0f0f0;\n  border-radius: 5px;\n  border: 1px solid #c5e1a5; }\n\n.jsPanel-cal-sub.week {\n  color: gray;\n  font-size: .66rem; }\n\n.jsPanel-cal-sub.day.notInMonth {\n  color: lightgray; }\n\n.jsPanel-cal-sub.day-name, .jsPanel-cal-blank3 {\n  background: gainsboro; }\n\n.jsPanel-cal-sub.day-name.day-name-6 {\n  border-top-right-radius: 5px;\n  border-bottom-right-radius: 5px; }\n\n.jsPanel-cal-sub.day-name.weekend {\n  color: crimson; }\n\n.jsPanel-cal-sub.day.selected {\n  background-color: #81d4fa;\n  border-radius: 5px;\n  color: #fff; }\n\n.jsPanel-cal-sub.day.selected.range {\n  background-color: #ce93d8;\n  color: #fff; }\n\n.jsPanel-cal-sub.day:hover {\n  background-color: #c5e1a5;\n  border-radius: 5px;\n  color: #fff; }\n\n.jsPanel-cal-sub.jsPanel-cal-back {\n  grid-area: back;\n  cursor: pointer; }\n  .jsPanel-cal-sub.jsPanel-cal-back svg {\n    width: 50%; }\n\n.jsPanel-cal-sub.jsPanel-cal-forward {\n  grid-area: forward;\n  cursor: pointer; }\n  .jsPanel-cal-sub.jsPanel-cal-forward svg {\n    width: 50%; }\n\n.jsPanel-cal-sub.jsPanel-cal-month {\n  grid-area: month;\n  font-variant: small-caps; }\n\n.jsPanel-cal-sub.jsPanel-cal-clear {\n  grid-area: clear;\n  cursor: pointer; }\n\n.jsPanel-cal-sub.jsPanel-cal-reset {\n  grid-area: reset;\n  cursor: pointer; }\n  .jsPanel-cal-sub.jsPanel-cal-reset svg {\n    width: 50%; }\n\n.jsPanel-cal-sub.jsPanel-cal-blank3 {\n  grid-area: blank3;\n  border-top-left-radius: 5px;\n  border-bottom-left-radius: 5px; }\n\n.jsPanel-cal-sub.day-name-0 {\n  grid-area: day-name-0; }\n\n.jsPanel-cal-sub.day-name-1 {\n  grid-area: day-name-1; }\n\n.jsPanel-cal-sub.day-name-2 {\n  grid-area: day-name-2; }\n\n.jsPanel-cal-sub.day-name-3 {\n  grid-area: day-name-3; }\n\n.jsPanel-cal-sub.day-name-4 {\n  grid-area: day-name-4; }\n\n.jsPanel-cal-sub.day-name-5 {\n  grid-area: day-name-5; }\n\n.jsPanel-cal-sub.day-name-6 {\n  grid-area: day-name-6; }\n\n.jsPanel-cal-sub.week-1 {\n  grid-area: week-1; }\n\n.jsPanel-cal-sub.week-2 {\n  grid-area: week-2; }\n\n.jsPanel-cal-sub.week-3 {\n  grid-area: week-3; }\n\n.jsPanel-cal-sub.week-4 {\n  grid-area: week-4; }\n\n.jsPanel-cal-sub.week-5 {\n  grid-area: week-5; }\n\n.jsPanel-cal-sub.day.selected.range.remove-border-radius-left {\n  border-top-left-radius: 0;\n  border-bottom-left-radius: 0; }\n\n.jsPanel-cal-sub.day.selected.range.remove-border-radius-right {\n  border-top-right-radius: 0;\n  border-bottom-right-radius: 0; }\n';
 
+  // src/json/custom.css.txt
+  var custom_css_default = `/* sur une id\xE9e de lea verrou retransmise ici https://piccalil.li/tutorial/create-a-user-controlled-dark-or-light-mode/)
+
+voir aussi https://codepen.io/jakob-e/pen/doMoML?editors=0110
+pour convertir
+*/
+
+:root {
+  
+--icon-calendar: url("data:image/svg+xml,%3Csvg width='24' height='24' stroke-width='1.5' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E %3Cpath d='M15 4V2M15 4V6M15 4H10.5M3 10V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V10H3Z' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round'/%3E %3Cpath d='M3 10V6C3 4.89543 3.89543 4 5 4H7' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round'/%3E %3Cpath d='M7 2V6' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round'/%3E %3Cpath d='M21 10V6C21 4.89543 20.1046 4 19 4H18.5' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round'/%3E %3C/svg%3E");
+}
+/*** form **/
+.wrapper {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    grid-gap: 16px;
+  }
+
+
+.wrapper form {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    grid-gap: 16px;
+  
+}
+
+.hidden {
+	display: none;
+	}
+	
+.wrapper aside {
+    align-self: start; /* NOTESTT: full height of content, if nothing set height is height of contente*/
+    background: #4b5195;
+  }
+form label, form .label {
+    grid-column: 1 / 2;
+    display: block;
+}
+
+
+form button,
+form input {
+  padding: 1em;
+}
+
+form input,
+from button
+{
+  background: lightgrey;
+  width: 93%; /* si je mets 100% c'est trop large */
+  border: 0;
+  grid-column: 2 / 3;
+}
+
+.full-width {
+    grid-column: 1 / 3;   
+}
+
+
+.manual-width{
+	grid-column: var(--col, 1 / 3);
+}
+
+.contacts {
+
+  color: #fff;
+}
+
+
+/* jspanel footer */
+/* idea from https://ishadeed.com/article/flexbox-separator/ */
+
+.jsPanel-ftr-section {
+    display: flex;
+    gap: 1rem;
+     /*! max-width: 700px; */
+     /*! margin: 0.5rem auto; */
+    align-items: center;
+    flex-wrap: nowrap;
+}
+
+.jsPanel-ftr-section__item {
+    flex: 1;
+}
+
+.jsPanel-ftr-section:before {
+    content: "";
+    border: 1px solid #d3d3d3;
+    align-self: stretch;
+    border: 1px solid #d3d3d3;
+    border-image: linear-gradient(45deg, #3f51b5, #cddc39) 1;
+}
+.jsPanel-ftr-section__item--start {
+    order: -1;
+    flex: 15 1 0;
+}
+
+.jsPanel-ftr-section__item--end {
+    flex: 1 1 0;
+}
+`;
+
   // src/ui.js
-  var import_localeData2 = __toModule(require_localeData());
-  var import_customParseFormat = __toModule(require_customParseFormat());
-  var import_utc = __toModule(require_utc());
   var UI = {
     LOG_UI: "UI",
+    LISTENER_PREFIX: "OCRESA",
+    UI_PREFIX: "OCRESA",
+    UI_MAINPAN: "OCRESA-mainPan",
     _bootstrap: function() {
       let sEl;
       render(new Button({
@@ -7023,64 +7265,160 @@
       var lastInserted = document.querySelector(".menuBar").lastChild;
       var whereToInsert = document.querySelector(".menuBar").children[document.querySelector(".menuBar").children.length - 3];
       insertAfter(lastInserted, whereToInsert);
-      const sCss = `
-.reset {
-  display: flex;
-  justify-content: center;
-}
-
-.reset > .btn {
-  padding: 0.7rem 1rem;
-  border: none;
-  border-radius: 10px;
-  background-color: cadetblue;
-  font-size: 1rem;
-  font-weight: bold;
-}
-
-.menu {
-  background-color: rgb(214, 210, 210);
-  width: 7rem;
-  z-index:1000;
-}
-
-.menu > ul {
-  text-align: center;
-  list-style: none;
-}
-
-.menu > ul > li {
-  padding: 0.2rem;
-  margin-top: 0.2rem;
-}
-
-.menu > ul > li:hover {
-  background-color: gainsboro;
-  font-weight: bold;
-}
-
-.menu-off {
-  display: none;
-}		
-		`;
-      var oSS = document.createElement("style");
-      oSS.type = "text/css";
-      oSS.innerText = sCss;
-      insertAfter(oSS, document.querySelector("body").lastChild);
-      sEl = `
-    <div id="menu-div" class="menu">
-      <ul>
-        <li data-action="menu__BookSession">Book Session</li>
-        <li>Blue</li>
-        <li>Orange</li>
-        <li>Pink</li>
-        <li>Purple</li>
-        <li>Green</li>
-      </ul>
-    </div>		
-		`;
-      const fragment = document.createRange().createContextualFragment(sEl);
-      insertAfter(fragment, document.querySelector("body").lastChild);
+    },
+    _getPanelId: function(bThrowError = false) {
+      let self2 = this;
+      let panelIDs2 = jsPanel.getPanels(function() {
+        return this.options.data === self2.UI_MAINPAN;
+      }).map((panel) => panel.id);
+      if (Array.isArray(panelIDs2) === true && panelIDs2.length === 1) {
+        return panelIDs2[0];
+      }
+      if (Array.isArray(panelIDs2) === true && panelIDs2.length > 1) {
+        log_default.err(this.LOG_UI, "%cMore than one main panel found %o", APP_ERROR_STYLE, panelIDs2);
+        return void 0;
+      }
+      if (bThrowError === true) {
+        log_default.err(this.LOG_UI, "%cNo panel main panel:%s was found in this panel list %o", APP_ERROR_STYLE, this.UI_MAINPAN, panelIDs2);
+        throw new Error(`No main panel ${this.UI_MAINPAN} was found `);
+      }
+      return void 0;
+    },
+    clean: function() {
+      aEvents = getListeners(document);
+      for (let event of aEvents) {
+        if (typeof event.name !== "undefined") {
+          var sName = event.name;
+          var iStartPosition = sName.indexOf(".") || 0;
+          if (sName.includes(this.LISTENER_PREFIX, iStartPosition)) {
+            removeListener(document, `.${sName}`);
+            log_default.dbg(this.LOG_UI, "%cListener: %s was removed", APP_DEBUG_STYLE, sName);
+          }
+        }
+      }
+    },
+    displayErrors: function(args) {
+      if (Array.isArray(args)) {
+        this._setMultiMsgOnFooter({ msg: args, btnTxt: "log" });
+        return;
+      }
+      let { error } = Object.assign({
+        error: "&nbsp;"
+      }, args);
+      this._setMsgOnFooter({ msg: error });
+      return;
+    },
+    displayMessages: function(args) {
+      if (Array.isArray(args)) {
+        this._setMultiMsgOnFooter({ msg: args, btnTxt: "log" });
+        return;
+      }
+      let { type, value } = Object.assign({
+        type: "html",
+        value: "&nbsp;"
+      }, args);
+      this._setMsgOnFooter({ msg: value });
+      return;
+    },
+    _setMsgOnFooter: function(args) {
+      let { msg, zone } = Object.assign({
+        msg: "&nbsp;",
+        zone: 1
+      }, args);
+      let sId = this._getPanelId();
+      if (typeof sId === "undefined") {
+        log_default.err(this.LOG_UI, "%c no id found for panel", APP_ERROR_STYLE, panelIDs);
+        return;
+      }
+      let panel = document.getElementById(sId);
+      log_default.dbg(this.LOG_UI, "%cPanel founded was", APP_DEBUG_STYLE, panel);
+      let sSelector = "";
+      if (zone === 1) {
+        sSelector = ".jsPanel-ftr-section__item--start";
+      }
+      if (zone === 2) {
+        sSelector = ".jsPanel-ftr-section__item--end";
+      }
+      if (sSelector.length === 0) {
+        log_default.err(this.LOG_UI, "%c_setMsgOnFooter impossible to send text: %s to zone: %i", APP_ERROR_STYLE, msg, zone);
+        return;
+      }
+      panel.footer.querySelector(sSelector).innerHTML = msg;
+    },
+    _setMultiMsgOnFooter: function(args) {
+      let { msg, btnTxt, zone } = Object.assign({
+        msg: [{ code: "", description: "" }],
+        btnTxt: "Afficher le log",
+        zone: 1
+      }, args);
+      let sId = this._getPanelId();
+      if (typeof sId === "undefined") {
+        log_default.err(this.LOG_UI, "%c no id found for panel", APP_ERROR_STYLE, panelIDs);
+        return;
+      }
+      let panel = document.getElementById(sId);
+      log_default.dbg(this.LOG_UI, "%cPanel founded was", APP_DEBUG_STYLE, panel);
+      let sSelector = "";
+      if (zone === 1) {
+        sSelector = ".jsPanel-ftr-section__item--start";
+      }
+      if (zone === 2) {
+        sSelector = ".jsPanel-ftr-section__item--end";
+      }
+      if (sSelector.length === 0) {
+        log_default.err(this.LOG_UI, "%c_setMultiMsgOnFooter impossible to send text: %s to zone: %i", APP_ERROR_STYLE, msg, zone);
+        return;
+      }
+      log_default.dbg(this.LOG_UI, "%c_setMultiMsgOnFooter ajout du bouton: %s", APP_DEBUG_STYLE, btnTxt);
+      panel.footer.querySelector(sSelector).innerHTML = `<span>Voir les notifications</span><button data-action="displayErrors">${btnTxt}</button>`;
+      const self2 = this;
+      let _sTxt = "";
+      for (_v in msg) {
+        if (typeof msg[_v].value === "undefined") {
+          _sTxt += `<div>${msg[_v].description} raison: ${msg[_v].value}</div>`;
+        } else {
+          _sTxt += `<div>${msg[_v].description}</div>`;
+        }
+      }
+      addListener(document, `click.${this.LISTENER_PREFIX}:footerErrorList`, function(event) {
+        if (event.target.dataset && event.target.dataset.action === "displayErrors") {
+          jsPanel.modal.create({
+            theme: "warning filleddark",
+            headerTitle: '<i class="fad fa-exclamation-triangle"></i>Attention',
+            content: `<section>${_sTxt}</section>`,
+            position: "60 60",
+            closeOnBackdrop: false
+          });
+        }
+      });
+    },
+    progressSet: function(iValue) {
+      const sProgressBarColor = "#7451eb";
+      let sId = this._getPanelId();
+      if (typeof sId === "undefined") {
+        log_default.err(this.LOG_UI, "%c no id found for panel", APP_ERROR_STYLE, panelIDs);
+        return;
+      }
+      let panel = document.getElementById(sId);
+      log_default.dbg(this.LOG_UI, "%cPanel founded was", APP_DEBUG_STYLE, panel);
+      if (iValue == -1) {
+        panel.progressbar.classList.remove("active");
+        panel.progressbar.querySelector(".jsPanel-progressbar-slider").style.width = "0%";
+        return;
+      }
+      if (panel.progressbar.classList.contains("active") === false) {
+        panel.progressbar.classList.add("active");
+      }
+      panel.progressbar.style.background = sProgressBarColor;
+      log_default.dbg(this.LOG_UI, "%cProgressbar updated to %i%", APP_DEBUG_STYLE, iValue);
+      if (iValue >= 100) {
+        window.setTimeout(() => {
+          panel.progressbar.classList.remove("active");
+          panel.progressbar.querySelector(".jsPanel-progressbar-slider").style.width = "0%";
+        }, 250);
+        return;
+      }
+      panel.progressbar.querySelector(".jsPanel-progressbar-slider").style.width = `${100 - iValue}%`;
     },
     start: function() {
       this._bootstrap();
@@ -7092,26 +7430,50 @@
         }
       });
     },
+    helper_css: function(sSelector, sId, sCss) {
+      if (document.body.querySelector(`${sSelector} [id="${sId}"]`) === null) {
+        render(new Style2({
+          attributes: { type: "text/css", id: sId },
+          text: `${sCss}`
+        }), document.body.querySelector(sSelector));
+      }
+    },
     windowInit: function() {
-      const sAnchor = document.getElementById("sttPlaceHolder");
-      if (document.body.querySelector('#sttPlaceHolder [id="jspanel/default.css"]') === null) {
-        render(new Style2({
-          attributes: { type: "text/css", id: "jspaneldefault.css" },
-          text: `${jspanel_css_default}`
-        }), document.body.querySelector("#sttPlaceHolder"));
+      const sAnchor = "#sttPlaceHolder";
+      this.helper_css(sAnchor, "jspanel/default.css", jspanel_css_default);
+      this.helper_css(sAnchor, "datepicker/theme/default.css", datepicker_theme_default_css_default);
+      this.helper_css(sAnchor, "ocresa/custom.css", custom_css_default);
+      let sPanelID = this._getPanelId();
+      log_default.dbg(this.LOG_UI, "%cpanelIDs is %o", APP_DEBUG_STYLE, sPanelID);
+      if (typeof sPanelID !== "undefined") {
+        if (document.getElementById(sPanelID).status === "minimized") {
+          log_default.dbg(this.LOG_UI, "%cpanelIDs %o is minimized have to normalize it", APP_DEBUG_STYLE, sPanelID);
+          window.setTimeout(() => {
+            document.getElementById(sPanelID).normalize();
+          }, 50);
+        }
+        return;
       }
-      if (document.body.querySelector('#sttPlaceHolder [id="datepicker/theme/default.css"]') === null) {
-        render(new Style2({
-          attributes: { type: "text/css", id: "datepicker/theme/default.css" },
-          text: `${datepicker_theme_default_css_default}`
-        }), document.body.querySelector("#sttPlaceHolder"));
-      }
+      log_default.dbg(this.LOG_UI, "%cNo panel we have to create one", APP_DEBUG_STYLE);
+      const self2 = this;
       jsPanel.create({
+        data: this.UI_MAINPAN,
         theme: "dark",
         headerLogo: '<i class="fad fa-home-heart ml-2"></i>',
         headerTitle: "OC RESA",
         headerToolbar: '<span class="text-sm">Just some text in optional header toolbar ...</span>',
-        footerToolbar: '<span class="flex flex-grow">You can have a footer toolbar too</span><i class="fal fa-clock mr-2"></i><span class="clock">loading ...</span>',
+        footerToolbar: `
+				<section class="jsPanel-ftr-section">
+					<div class="jsPanel-ftr-section__item jsPanel-ftr-section__item--start">
+						<!-- Content -->&nbsp;
+					</div>
+				  
+					<div class="jsPanel-ftr-section__item jsPanel-ftr-section__item--end">
+						<!-- Content --> v 1.0
+					</div>
+				</section>
+			
+			`,
         panelSize: {
           width: () => {
             return Math.min(800, window.innerWidth * 0.9);
@@ -7123,44 +7485,44 @@
         animateIn: "jsPanelFadeIn",
         content: `
 			<div class="wrapper">
-			<div class="contacts">Petit message sympa</div>
-			<div class="form">
-			<div id="form-container" class="flex mt-4 relative">
-			<form id="sample-date" class="mx-4 form-inline">
-				<div class="flex items-center border rounded bg-white">
-					<label class="hidden" for="inlineFormDate">Select date</label>
-					<div class="px-2 py-1 bg-gray-200">
-					<svg width="24" height="24" stroke-width="1.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-	<path d="M15 4V2M15 4V6M15 4H10.5M3 10V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V10H3Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
-	<path d="M3 10V6C3 4.89543 3.89543 4 5 4H7" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
-	<path d="M7 2V6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
-	<path d="M21 10V6C21 4.89543 20.1046 4 19 4H18.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
-	</svg>
-					</div>
-					<input type="text" class="ml-0 px-2 py-1 leading-normal rounded-r required" data-action="chooseDateFrom" id="inlineFormDate" value="" placeholder="select date">
-
-		<div class="formbuilder-text form-group field-text-1644246938537">
-			<label for="text-1644246938537" class="formbuilder-text-label">Lien Google sheet</label>
-			<input type="text" class="form-control" name="g_sheet_location" access="false" id="g_sheet_location">
-		</div>
-				</div>
-			
-			<p class="full-width"><button data-action="bookSession">R\xE9server</button></p>
-			</form>
-		</div>
-		</div>
-		</div>
+				<aside class="contacts">Petit message sympa</aside>
+				<form id="sample-date">
+				<label class="hidden" for="inlineFormDate">Select date</label>
+				<svg class="label" width="24" height="24" 
+					stroke-width="1.5" viewBox="0 0 24 24" 
+					fill="none" xmlns="http://www.w3.org/2000/svg">
+					<path d="M15 4V2M15 4V6M15 4H10.5M3 10V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V10H3Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+					<path d="M3 10V6C3 4.89543 3.89543 4 5 4H7" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+					<path d="M7 2V6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+					<path d="M21 10V6C21 4.89543 20.1046 4 19 4H18.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+				<label style="background-image: --icon-calendar">Test label</label>
+				<input type="text"  data-action="chooseDateFrom" id="inlineFormDate" value="" placeholder="selection de la date">
+				<div id="form-container" class="manual-width" style="--col: 2 / 3"><!--DATEPICKERCONTAINER--></div>
+				<label for="g_sheet_location" class="formbuilder-text-label">Lien Google sheet</label>
+				<input type="text" class="form-control" name="g_sheet_location" access="false" id="g_sheet_location">
+				<button class="full-width" data-action="bookSession">R\xE9server</button>
+				</form>
+			</div>
 			`,
         onwindowresize: true,
         callback: function(panel) {
           this.content.style.padding = "10px";
+        },
+        onbeforeclose: [
+          function(panel) {
+            self2.clean(panel);
+            return true;
+          }
+        ],
+        onclosed: function(panel, closedByUser) {
+          log_default.dbg(self2.LOG_UI, "%cPanel with id: %s closed! Check if panel close control was clicked to close the panel: %o", APP_DEBUG_STYLE, panel.id, closedByUser);
         }
       });
-      const self2 = this;
-      document.addEventListener("click", function(event) {
-        log_default.dbg(self2.LOG_UI, "%cUser click on %o", APP_DEBUG_STYLE, event);
+      addListener(document, `click.${this.LISTENER_PREFIX}:mainPan`, function(event) {
+        log_default.dbg(self2.LOG_UI, "%cWe are on Listener Named %s, User click on %o", APP_DEBUG_STYLE, `${self2.LISTENER_PREFIX}:mainPan`, event);
         if (event.target.dataset && event.target.dataset.action === "chooseDateFrom") {
-          jsPanel.create({
+          const oPanelDtPicker = jsPanel.create({
             container: "#form-container",
             contentSize: {
               width: () => {
@@ -7172,12 +7534,17 @@
             headerControls: "closeonly xs",
             theme: "dark",
             borderRadius: 3,
-            position: "left-top left-bottom 0 2 #sample-date",
+            position: "left-top left-bottom 0 2 #form-container",
             callback: (panel) => {
               jsPanel.datepicker.create(panel.content, {
                 locale: "fr",
                 ondateselect: (container, date, e) => {
                   document.querySelector('form [data-action="chooseDateFrom"]').value = src_default(date).format("DD-MM-YYYY");
+                  window["OcBook"].getEventBroker().emit("changeValue:date", { data: { url: {
+                    format: "raw",
+                    value: document.querySelector('form [data-action="chooseDateFrom"]').value
+                  } } });
+                  oPanelDtPicker.close();
                 }
               });
             }
@@ -7188,6 +7555,13 @@
           log_default.dbg(self2.LOG_UI, "%cUser click on a button to book a session", APP_DEBUG_STYLE);
           const sValue = document.querySelector('form [data-action="chooseDateFrom"]').value;
           window["OcBook"].getEventBroker().emit("clickBtn:bookSession", { data: { date: { format: "raw", value: sValue } } });
+        }
+      });
+      addListener(document, `change.${this.LISTENER_PREFIX}:mainPan`, function(event) {
+        log_default.dbg(self2.LOG_UI, "%cWe are on Listener Named %s, User change some values on %o", APP_DEBUG_STYLE, `${self2.LISTENER_PREFIX}:mainPan`, event);
+        if (event.target.id === "g_sheet_location") {
+          const sValue = event.target.value;
+          window["OcBook"].getEventBroker().emit("changeValue:dataURL", { data: { url: { format: "raw", value: sValue } } });
         }
       });
     }
@@ -12205,27 +12579,6 @@
   });
   var JSFrame_neutral_default = require_JSFrame();
 
-  // src/json/style_1.json
-  var _card = {
-    display: "flex",
-    flexDirection: "column"
-  };
-  var _card__cover = {
-    height: "150px",
-    width: "100%"
-  };
-  var _card__content = {
-    flex: 1
-  };
-  var style_1_default = {
-    ".card": _card,
-    ".card__cover": _card__cover,
-    ".card__content": _card__content
-  };
-
-  // src/json/style_1.txt
-  var style_1_default2 = ".card {\n                        display: flex;\n                        flex-direction: column;\n                    }\n\n                    .card__cover {\n                        height: 150px;\n                        width: 100%;\n                    }\n\n                    .card__content {\n                        /* Take available height */\n                        flex: 1;\n                    }\n\n\n\ninput:focus,\ntextarea:focus {\n  outline: 3px solid gold;\n}\n\ninput,\ntextarea,\nbutton {\n  width: 100%;\n  border: 1px solid #000;\n}\n\n.wrapper {\n  box-shadow: 0 0 5px 0 rgba(0, 0, 0, 0.2);\n}\n.wrapper > * {\n  padding: 1em;\n}\n@media (min-width: 700px) {\n  .wrapper {\n    display: grid;\n    grid-template-columns: 1fr 2fr;\n  }\n  .wrapper > * {\n    padding: 2em 2em;\n  }\n}\n\nul {\n  list-style: none;\n  padding: 0;\n}\n\n.contacts {\n  background: #4b5195;\n  color: #fff;\n}\n\n.form {\n  background: #fff;\n}\n\nform {\n  display: grid;\n  grid-template-columns: 1fr 1fr;\n  grid-gap: 20px;\n}\nform label {\n  display: block;\n}\nform p {\n  margin: 0;\n}\n\n.full-width {\n  grid-column: 1 / 3;\n}\n\nbutton,\ninput,\ntextarea {\n  padding: 1em;\n}\n\nbutton {\n  background: lightgrey;\n  width: 100%;\n  border: 0;\n}\nbutton:hover, button:focus {\n  background: gold;\n  outline: 0;\n}\n";
-
   // src/vendor/stoxy/core/stoxy-events.js
   var INIT_SUCCESS = "stoxy-init-success";
   var PUT_SUCCESS = "stoxy-put-success";
@@ -12509,12 +12862,16 @@
     return newObj;
   }
 
+  // src/vendor/deePool/deePool.js
+  var EMPTY_SLOT = Object.freeze(Object.create(null));
+
   // src/core.js
   var Core = function(o = {}) {
     const LOG_CORE = "CORE";
+    const LISTENER_PREFIX = "OCRESA";
     let Api;
     let Student;
-    const _emitter = new mitt_default();
+    const _emitter = new mitt();
     let userData = {};
     const _createData = function() {
       const mData = {
@@ -12522,7 +12879,7 @@
         g_sheet_location: "google"
       };
       write("userData", mData);
-      console.log("defined mData as %o", mData);
+      log_default.inf(LOG_CORE, "%cDefault data created", APP_INFO_STYLE);
     };
     const _bootstrap = function() {
       Api = unsafeWindow.Facturier.klass.find((o2) => o2.id == "Api").ptr;
@@ -12545,7 +12902,7 @@
           document.querySelector("#g_sheet_location").value = _data.g_sheet_location;
         });
         document.querySelector("#g_sheet_location").addEventListener("change", (e) => {
-          console.log(e);
+          console.log("#g_sheet_location change %o", e);
           update("userData.g_sheet_location", () => e.target.value);
         });
         document.querySelector("#sample-date").addEventListener("submit", (e) => {
@@ -12556,22 +12913,50 @@
       _emitter.on("clickBtn:bookSession", (type, ...args) => {
         log_default.inf(LOG_CORE, "%cclickBtn:bookSession listener of _emitter:", APP_INFO_STYLE, `event(${type}): `, ...args);
         /* @__PURE__ */ assert(typeof type.data.date.value === "string", "selected date must be a string.", TypeError);
-        /* @__PURE__ */ actionBook(type.data.date.value);
+        /* @__PURE__ */ ui_default.displayErrors();
+        checkRequirements({ date: type.data.date.value });
+        actionBook(type.data.date.value);
+      });
+      _emitter.on("error:bookSession", (args) => {
+        log_default.inf(LOG_CORE, "%cerror:bookSession: %o", APP_INFO_STYLE, args);
+        ui_default.displayErrors({ error: args.data.error.value });
+      });
+      _emitter.on("error:noDataSrc", (args) => {
+        log_default.inf(LOG_CORE, "%cerror:noDataSrc: %o", APP_INFO_STYLE, args);
+        ui_default.displayErrors({ error: args.data.error.value });
+      });
+      _emitter.on("changeValue:date", (args) => {
+        log_default.inf(LOG_CORE, "%cchangeValue:date: %o", APP_INFO_STYLE, args);
+      });
+      _emitter.on("changeValue:dataURL", (args) => {
+        log_default.inf(LOG_CORE, "%cchangeValue::dataURL: %o", APP_INFO_STYLE, args);
+        update("userData.g_sheet_location", args.data.url.value);
       });
       persistKey("userData");
       read("userData").then((_data) => {
         if (typeof _data === "undefined") {
           _createData();
-        } else {
-          console.log("Data alreay defined, get it and find : %o", _data);
         }
       });
-      /* @__PURE__ */ console.log("test object style");
-      /* @__PURE__ */ console.log(style_1_default);
-      render(new Style2({ attributes: { type: "text/css" }, text: `${style_1_default2}` }), document.body.querySelector("#sttPlaceHolder"));
       return;
       _emitter.on("*", (type, ...args) => {
         log_default.inf(LOG_CORE, "%ccatchAll listener of _emitter:", APP_INFO_STYLE, `event(${type}): `, ...args);
+      });
+    };
+    const checkRequirements = function(args) {
+      let { date } = Object.assign({
+        date: src_default()
+      }, args);
+      if (date.length === 0) {
+        _emitter.emit("error:bookSession", { data: { error: { format: "text", value: "Erreur majeure, pas de date d\xE9finie" } } });
+        throw new Error("No date selected");
+      }
+      read("userData.g_sheet_location").then((_data) => {
+        if (_data.length === 0) {
+          log_default.err(LOG_CORE, "%cThere is no google sheet defined", APP_ERROR_STYLE);
+          _emitter.emit("error:noDataSrc", { data: { error: { format: "text", value: "Erreur majeure, pas de feuille google definie" } } });
+          throw new Error("No google sheet set");
+        }
       });
     };
     const actionBook = async function(sDate) {
@@ -12611,12 +12996,12 @@
             insert = "insert into data (`Team`,`Pos`,`First`,`Last`,`Bats`,`AB`,`R`,`H`,`HR`,`RBI`,`SB`,`BA`) values (";
             const sNeedle = response.raw.table.rows[i].c[iColFN] == null ? "" : response.raw.table.rows[i].c[iColFN].v;
             const oStudent = aStudents.find((o2) => o2.displayName === sNeedle);
-            const sLigneToText = `[Ligne ${i + 1}]`;
+            const sLigneToText = `Google Sheet (Ligne ${i + 1})`;
             if (typeof oStudent === "undefined") {
               log_default.err(LOG_CORE, "%c[sheetrock.myCallback()] Error student %s not found", APP_ERROR_STYLE, sNeedle);
               aErrors.push({
                 code: "STUDENT_NOT_FOUND",
-                description: `${sLigneToText}:Etudiant non trouv\xE9`,
+                description: `${sLigneToText}:Etudiant ${sNeedle} non trouv\xE9 parmi vos \xE9tudiants`,
                 value: sNeedle
               });
               continue;
@@ -12686,10 +13071,7 @@
         }
       };
       const sGoogleSheetURL = document.querySelector("#g_sheet_location").value;
-      console.log(sGoogleSheetURL);
-      console.log(document.querySelector("#g_sheet_location").value === "https://docs.google.com/spreadsheets/d/17EwuJnc1VYoQen40Z1DIzId9bsXEUORimqro2EVKIvk/edit#gid=0");
-      console.log(sGoogleSheetURL === "https://docs.google.com/spreadsheets/d/17EwuJnc1VYoQen40Z1DIzId9bsXEUORimqro2EVKIvk/edit#gid=0");
-      src_default2({
+      /* @__PURE__ */ src_default2({
         url: sGoogleSheetURL,
         query: "select A,B,C,D,E",
         callback: myCallback,
@@ -12698,35 +13080,68 @@
       return;
     };
     const _bookList = async function(sDate, aStudents, aErrors) {
-      if (sDate.length === 0) {
-        log_default.err(LOG_CORE, "%c[_bookList] not date selected", APP_ERROR_STYLE);
-        throw new Error("IRRECOVERABLE ERROR: no date selected");
-        return;
-      }
       let _r = src_default(sDate, "DD-MM-YYYY");
       if (_r.format("d") !== "1") {
         log_default.err(LOG_CORE, "%c[_bookList] the selected date don't start on monday but on %s", APP_ERROR_STYLE, _r.format("dddd, DD-MM-YYYY"));
-        throw new Error(`IRRECOVERABLE ERROR: you select ${_r.format("dddd, DD-MM-YYYY")} as the date but selected  day of date have to be a monday`);
+        const sError = `IRRECOVERABLE ERROR: you select ${_r.format("dddd, DD-MM-YYYY")} as the date but selected  day of date have to be a monday`;
+        _emitter.emit("error:bookSession", { data: { error: { format: "text", value: sError } } });
+        throw new Error(sError);
         return;
       }
       log_default.dbg(LOG_CORE, "%c[_bookList] selected date is  %s", APP_DEBUG_STYLE, _r.format("dddd, DD-MM-YYYY"));
       let _r2;
+      let _i = 0, _j = aStudents.length;
       for (student of aStudents) {
         log_default.dbg(LOG_CORE, "%c[_bookList] wanna process student: %o", APP_DEBUG_STYLE, student);
         _r2 = _r.add(student.date, "day").add(student.time.h, "hour").add(student.time.m, "minute");
         /* @__PURE__ */ log_default.dbg(LOG_CORE, "%c[_bookList] wanna book a session for student: %s at date %s", APP_DEBUG_STYLE, student.fullname, _r2.format("DD-MM-YYYYTHH:mm:ssZ[Z]"));
+        _i++;
+        log_default.dbg(LOG_CORE, "%c[_bookList] treat student %i on %i students = (%i)%", APP_DEBUG_STYLE, _i, _j, _i / _j * 100);
+        ui_default.progressSet(_i / _j * 100);
+        ui_default.displayMessages({ type: "html", value: `<span>Traite l'\xE9tudiant: ${student.fullname}</span>` });
         let _res = await _bookStudent(student.pid, student.id, _r2);
+        if (typeof _res === "object" && "errors" in _res) {
+          if (_res.errors.length == 1 && _res.errors[0].code === "SESSION_ALREADY_EXISTS") {
+            const e2 = _res.errors[0];
+            log_default.err(LOG_CORE, "%c[_bookList] call Api.bookStudent error[%s] :%s ", APP_ERROR_STYLE, e2.code, e2.message);
+            aErrors.push({
+              code: "API_BOOK_ERROR",
+              description: `Une session existe d\xE9j\xE0 pour ${student.fullname} le ${_r2.format("DD/MM/YYYY \xE0 HH:mm")}`,
+              value: ""
+            });
+            continue;
+          }
+          if (_res.errors.length == 1 && _res.errors[0].code === "TOO_LOW_ERROR" && _res.errors[0].field === "sessionDate") {
+            const e2 = _res.errors[0];
+            log_default.err(LOG_CORE, "%c[_bookList] call Api.bookStudent error[%s] :%s ", APP_ERROR_STYLE, e2.code, e2.message);
+            aErrors.push({
+              code: "API_BOOK_ERROR",
+              description: `La date de session doit \xEAtre post\xE9rieure au ${_r2.format("DD/MM/YYYY \xE0 HH:mm")} pour ${student.fullname}`,
+              value: ""
+            });
+            continue;
+          }
+          const e = _t.errors.reduce((acc, v) => `${acc}{v.message}`);
+          log_default.err(LOG_CORE, "%c[_bookList] call Api.bookStudent UNKNOWN error[%s] :%s ", APP_ERROR_STYLE, e.code, e.message);
+          aErrors.push({
+            code: "API_BOOK_ERROR",
+            description: `Impossible de r\xE9server une session pour ${student.fullname} \xE0 ${_r2.format("DD/MM/YYYY \xE0 HH:mm")}`,
+            value: e.message
+          });
+          continue;
+        }
         try {
           log_default.dbg(LOG_CORE, "%c[_bookList] we have successful created a session for %s at date %s (UTC), session id is %i", APP_DEBUG_STYLE, _res.recipient.displayableName, _res.sessionDate, _res.id);
         } catch (e) {
-          console.error("IRRECOVERABLE ERROR:%O in _booklist for student:%s", e, student.fullname);
+          log_default.err(LOG_CORE, "%c[_bookList] IRRECOVERABLE ERROR:%o in _booklist for student:%s", APP_ERROR_STYLE, e, student.fullname);
           aErrors.push({
             code: "API_BOOK_ERROR",
-            description: `Impossible de r\xE9server une session pour ${student.fullname} \xE0 ${_r.format("DD-MM-YYYYTHH:mm:ssZ[Z]")} `,
+            description: `Impossible de r\xE9server une session pour ${student.fullname} \xE0 ${_r2.format("DD-MM-YYYYTHH:mm:ssZ[Z]")} `,
             value: e
           });
         }
       }
+      ui_default.displayErrors(aErrors);
       return;
     };
     const _bookStudent = async function(pid, id, dtDate) {
