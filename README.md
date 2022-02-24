@@ -2,7 +2,7 @@
 
 
 ![](https://img.shields.io/badge/build-pass-success)
-![](https://img.shields.io/badge/version-1.1-orange)
+![](https://img.shields.io/badge/version-1.0-orange)
 [![](https://img.shields.io/badge/chat-workplace-blueviolet)](https://openclassrooms.workplace.com/groups/314612209540660/)
 
 
