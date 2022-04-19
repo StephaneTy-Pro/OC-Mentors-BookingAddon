@@ -173,25 +173,12 @@ const Core = function(o={}){
 		
 		_emitter.on('error:bookSession', (args) => {
 			Log.inf(LOG_CORE,"%cerror:bookSession: %o", C.APP_INFO_STYLE, args);
-			// ajouter l'erreur au bas du panneau
-			// mieux mettre un icone rouge erreur dans le panneau et pouvoir appeller un nouveau panneau de scroll avec les erreurs
-			/*{data: {error: {format:"", value:""}}}*/
-			// deux possibilités :
-			// 1 erreur : afficher directement
 			UI.displayErrors({error:args.data.error.value});
-			// +1 erreur mettre un lien pour un popup erreur
-			
 		});
 		
 		_emitter.on('error:noDataSrc', (args) => {
 			Log.inf(LOG_CORE,"%cerror:noDataSrc: %o", C.APP_INFO_STYLE, args);
-			// ajouter l'erreur au bas du panneau
-			// mieux mettre un icone rouge erreur dans le panneau et pouvoir appeller un nouveau panneau de scroll avec les erreurs
-			/*{data: {error: {format:"", value:""}}}*/
-			// deux possibilités :
-			// 1 erreur : afficher directement
 			UI.displayErrors({error:args.data.error.value});
-			// +1 erreur mettre un lien pour un popup erreur
 			
 		});
 		
@@ -229,7 +216,7 @@ const Core = function(o={}){
 		// tres pratique pour test rapide Api.getMe().then( console.dir );
 		//global event emitter broker 
 		_emitter.on('*', (type, ...args) => {
-			
+			// voir ce bout de code également : https://github.com/waffledonkey/console-trace/blob/master/index.js
 			/* fonctionne pas tres bien sous tampermonkey
 			Log.inf(LOG_CORE,"%cStack trace :%o", C.APP_INFO_STYLE, (new Error()).stack.split("\n") );
 			var callback = function(stackframes) {
@@ -512,7 +499,7 @@ const Core = function(o={}){
 		Log.dbg(LOG_CORE, "%c[_bookList] selected date is  %s", C.APP_DEBUG_STYLE, _r.format('dddd, DD-MM-YYYY'));	
 		let _r2;
 		let _i=0, _j = aStudents.length;
-		for(student of aStudents){
+		for(var student of aStudents){
 			Log.dbg(LOG_CORE, "%c[_bookList] wanna process student: %o", C.APP_DEBUG_STYLE, student);			
 
 			_r2 = _r.add(student.date, 'day')

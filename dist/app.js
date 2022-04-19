@@ -3,11 +3,14 @@
 // @namespace    http://tampermonkey.net/
 // @description
 // @author       Stéphane TORCHY
-// @version      0.0.1
+// @version      1.00.0002
+// @updateURL    https://raw.githubusercontent.com/StephaneTy-Pro/OC-Mentors-BookingAddon/master/dist/app.min.js
+// @downloadURL  https://raw.githubusercontent.com/StephaneTy-Pro/OC-Mentors-BookingAddon/master/dist/app.min.js
 // @icon         https://mirrors.creativecommons.org/presskit/icons/heart.red.png
 // multiple usage
-// @match        http://*/*
-// @match        https://*/*
+// @match        https://openclassrooms.com/fr/mentorship/dashboard/mentorship-sessions-history*
+// @match        https://openclassrooms.com/fr/mentorship/dashboard/sessions
+// @match        https://openclassrooms.com/fr/mentorship/dashboard/booked-mentorship-sessions
 
 
 // Start at document start https://www.tampermonkey.net/documentation.php#_run_at
@@ -13091,7 +13094,7 @@ from button
       log_default.dbg(LOG_CORE, "%c[_bookList] selected date is  %s", APP_DEBUG_STYLE, _r.format("dddd, DD-MM-YYYY"));
       let _r2;
       let _i = 0, _j = aStudents.length;
-      for (student of aStudents) {
+      for (var student of aStudents) {
         log_default.dbg(LOG_CORE, "%c[_bookList] wanna process student: %o", APP_DEBUG_STYLE, student);
         _r2 = _r.add(student.date, "day").add(student.time.h, "hour").add(student.time.m, "minute");
         /* @__PURE__ */ log_default.dbg(LOG_CORE, "%c[_bookList] wanna book a session for student: %s at date %s", APP_DEBUG_STYLE, student.fullname, _r2.format("DD-MM-YYYYTHH:mm:ssZ[Z]"));

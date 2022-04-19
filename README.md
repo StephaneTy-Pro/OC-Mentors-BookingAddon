@@ -86,7 +86,7 @@ C'est normal, il démarre au jour courant par défaut (puisqu on ne peut saisir 
 
 >L'application affiche un message d'erreur : le premier jour de la semaine doit être un lundi
 
-Dans le selecteur de date, la date de début de traitement doit toujours être un lundi, les jours étant calculés par différence entre le jour indiqué sur la feuille excel et le premier jour de la date de départ
+Dans le selecteur de date, la date de début de traitement doit toujours être un lundi, les jours étant calculés par différence entre le jour indiqué sur la feuille du tableur et le premier jour de la date de départ
 
 >J'ai fait une erreur dans la date que puis je faire
 
