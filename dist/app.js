@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @description
 // @author       Stéphane TORCHY
-// @version      1.00.0002
+// @version      1.00.0003.20220419
 // @updateURL    https://raw.githubusercontent.com/StephaneTy-Pro/OC-Mentors-BookingAddon/master/dist/app.min.js
 // @downloadURL  https://raw.githubusercontent.com/StephaneTy-Pro/OC-Mentors-BookingAddon/master/dist/app.min.js
 // @icon         https://mirrors.creativecommons.org/presskit/icons/heart.red.png
@@ -28,6 +28,7 @@
 
 /*
  * History
+ * 1.00.0002 : correction d'un oublie d'initialisation de variable 
  * 
  */
 // ==/UserScript==
